@@ -17,16 +17,12 @@ def split_into_groups(list, group_size):
 
 def compute_metric_of_each_query(group):
 
-    # Compute p@10 for each one.
-    # Count how many values higher than 0.5 are in the first 10 clip_results
-
     r10 = 0
 
     for i in range(10):
         if group[i] >= 0.5:
             r10 += 1
     r10 /= max(1, sum(1 for score in group if score >= 0.5))
-    # Compute the MRR for each one
 
     mrr = 0
 
