@@ -1,0 +1,48 @@
+[project]
+name = "gram"
+version = "0.1.0"
+description = "GRAM Project"
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch==2.3.1",
+    "torchvision==0.18.1",
+    "torchaudio==2.3.1",
+    "numpy==1.26.4",
+    "decord",
+    "h5py",
+    "ffmpeg-python",
+    "yacs",
+    "toolz",
+    "ipdb",
+    "einops",
+    "easydict",
+    "transformers==4.35.0",
+    "webdataset",
+    "sentencepiece",
+    "tqdm",
+    "opencv-python",
+    "audioread",
+    "librosa",
+    "wandb",
+    "datasets",
+    "huggingface_hub",
+    "yt_dlp",
+    "xformers==0.0.27",
+    "triton==2.3.1",
+    "setuptools",
+    "h5py"
+]
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+priority = "explicit"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
