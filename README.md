@@ -78,3 +78,15 @@ First, ensure you have a trained BERT checkpoint from the finetune_bert step. Th
 ```bash
    poetry run python query_reformulation/finetune_phi4.py
 ```
+## Citation
+
+If you wish to use these resources, please cite the work as follows:
+
+```text
+@inproceedings{Lutu2026VQPP,
+  title={VQPP: Video Query Performance Prediction Benchmark},
+  author={Adrian Catalin Lutu, Eduard Gabriel Poesina and Radu Constantin Ionescu},
+  year={2026},
+  url={https://arxiv.org/pdf/2602.17814}
+}
+```
