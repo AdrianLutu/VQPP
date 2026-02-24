@@ -83,10 +83,11 @@ First, ensure you have a trained BERT checkpoint from the finetune_bert step. Th
 If you wish to use these resources, please cite the work as follows:
 
 ```text
-@inproceedings{Lutu2026VQPP,
-  title={VQPP: Video Query Performance Prediction Benchmark},
-  author={Adrian Catalin Lutu, Eduard Poesina and Radu Tudor Ionescu},
-  year={2026},
-  url={https://arxiv.org/pdf/2602.17814}
+@article{lutu2026vqppvideoqueryperformance,
+      title={VQPP: Video Query Performance Prediction Benchmark}, 
+      author={Adrian Catalin Lutu and Eduard Poesina and Radu Tudor Ionescu},
+      year={2026},
+      journal={arXiv preprint arXiv:2602.17814},
+      url={https://arxiv.org/abs/2602.17814}, 
 }
 ```
