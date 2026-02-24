@@ -85,7 +85,7 @@ If you wish to use these resources, please cite the work as follows:
 ```text
 @inproceedings{Lutu2026VQPP,
   title={VQPP: Video Query Performance Prediction Benchmark},
-  author={Adrian Catalin Lutu, Eduard Gabriel Poesina and Radu Constantin Ionescu},
+  author={Adrian Catalin Lutu, Eduard Gabriel Poesina and Radu Tudor Ionescu},
   year={2026},
   url={https://arxiv.org/pdf/2602.17814}
 }
