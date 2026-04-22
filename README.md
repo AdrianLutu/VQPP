@@ -14,6 +14,7 @@ VQPP is a benchmark designed to evaluate methods that estimate the difficulty of
 │   ├── finetune_clip/          # Post-retrieval estimators (CLIP score, CLIP4CLIP)
 │   ├── corelation_cnn/         # Score distribution analysis (Correlation CNN)
 │   └── llm/                    # Zero-shot/Few-shot estimation via Llama 3.1
+├── prep_datasets/              # Source code for downloading and processing the original video corpus
 ├── query_reformulation/        # Application: QPP-guided Query Reformulation (Phi-4 + DPO)
 ├── resources/                  # The VQPP Benchmark Data
 │   ├── GRAM/                   # Performance data for GRAM retrieval system
@@ -35,6 +36,28 @@ This project is managed using [Poetry](https://python-poetry.org/) and requires 
 ```bash
    poetry install
 ```
+
+## Downloading and processing the original video corpus
+
+## MSR-VTT
+MSR-VTT can be downloaded using this [link](https://cove.thecvf.com/datasets/839).
+
+After downloading, unzip the files and make sure the paths inside prep_datasets/MSRVTT/process_msrvtt.py match the video files, then simply run the following command.
+
+```bash
+   poetry run python prep_datasets/MSRVTT/process_msrvtt.py
+```
+
+##VATEX
+
+For VATEX we need to scrape the video from youtube. For this we provide the prep_datasets/VATEX/download_vatex.py script. This script will download all the available videos (Note: Some video might not be available on youtube anymore) and process them.
+
+```bash
+   poetry run python prep_datasets/VATEX/download_vatex.py
+```
+
+(Note: From our experience this process took several days.)
+
 ## Running Baselines
 We provide implementations for three categories of QPP estimators.(Note: Please make sure that the paths in each script point to the correct files!)
 
