@@ -48,7 +48,7 @@ After downloading, unzip the files and make sure the paths inside prep_datasets/
    poetry run python prep_datasets/MSRVTT/process_msrvtt.py
 ```
 
-##VATEX
+## VATEX
 
 For VATEX we need to scrape the video from youtube. For this we provide the prep_datasets/VATEX/download_vatex.py script. This script will download all the available videos (Note: Some video might not be available on youtube anymore) and process them.
 
