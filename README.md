@@ -4,7 +4,7 @@ This repository contains the official code for the paper **"VQPP: Video Query Pe
 
 VQPP is a benchmark designed to evaluate methods that estimate the difficulty of a text query for video retrieval systems. It standardizes the evaluation of **Pre-retrieval** and **Post-retrieval** QPP estimators across two datasets (MSR-VTT, VATEX) and two state-of-the-art retrieval architectures (GRAM, VAST).
 
-The official data can be found [here](https://huggingface.co/datasets/funzon3/VQPP/tree/main). Please download the contents of the dataset and place them in the resources directory inside the repo.
+The official data can be found [here](https://huggingface.co/datasets/funzon3/VQPP/tree/main). Please download the contents of the dataset and place them in the resources directory inside the repository.
 
 ##  Repository Structure
 
@@ -33,6 +33,8 @@ This project is managed using [Poetry](https://python-poetry.org/) and requires 
 ```bash
    poetry install
 ```
+
+3. Download the official dataset [here](https://huggingface.co/datasets/funzon3/VQPP/tree/main) and place the GRAM and VAST directories into the resources directory of the repository.
 
 ## Downloading and processing the original video corpus
 
