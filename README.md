@@ -1,8 +1,10 @@
 # VQPP: Video Query Performance Prediction Benchmark
 
-This repository contains the official code and data for the paper **"VQPP: Video Query Performance Prediction Benchmark"**.
+This repository contains the official code for the paper **"VQPP: Video Query Performance Prediction Benchmark"**.
 
 VQPP is a benchmark designed to evaluate methods that estimate the difficulty of a text query for video retrieval systems. It standardizes the evaluation of **Pre-retrieval** and **Post-retrieval** QPP estimators across two datasets (MSR-VTT, VATEX) and two state-of-the-art retrieval architectures (GRAM, VAST).
+
+The official data can be found [here](https://huggingface.co/datasets/funzon3/VQPP/tree/main). Please download the contents of the dataset and place them in the resources directory inside the repo.
 
 ##  Repository Structure
 
@@ -16,11 +18,6 @@ VQPP is a benchmark designed to evaluate methods that estimate the difficulty of
 │   └── llm/                    # Zero-shot/Few-shot estimation via Llama 3.1
 ├── prep_datasets/              # Source code for downloading and processing the original video corpus
 ├── query_reformulation/        # Application: QPP-guided Query Reformulation (Phi-4 + DPO)
-├── resources/                  # The VQPP Benchmark Data
-│   ├── GRAM/                   # Performance data for GRAM retrieval system
-│   │   ├── metrics/            # Ground truth RR and Recall scores (Train/Val/Test)
-│   │   └── top100/             # Top-100 retrieved video IDs for post-retrieval analysis
-│   └── VAST/                   # Performance data for VAST retrieval system
 └── pyproject.toml              # Project dependencies and configuration
 ```
 ##  Installation
