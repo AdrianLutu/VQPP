@@ -15,7 +15,9 @@ The official data can be found [here](https://huggingface.co/datasets/funzon3/VQ
 │   ├── finetune_bert/          # Pre-retrieval estimator (BERT regressor)
 │   ├── finetune_clip/          # Post-retrieval estimators (CLIP score, CLIP4CLIP)
 │   ├── corelation_cnn/         # Score distribution analysis (Correlation CNN)
-│   └── llm/                    # Zero-shot/Few-shot estimation via Llama 3.1
+│   ├── meta_svr/               # Meta Regression Model
+|   └── llm/                    # Zero-shot/Few-shot estimation via Llama 3.1
+|   
 ├── prep_datasets/              # Source code for downloading and processing the original video corpus
 ├── query_reformulation/        # Application: QPP-guided Query Reformulation (Phi-4 + DPO)
 └── pyproject.toml              # Project dependencies and configuration
@@ -87,6 +89,14 @@ Correlation CNN: Analyzes the correlation between the queries and the video embe
    poetry run python baselines/corelation_cnn/train_cnn.py
    poetry run python baselines/corelation_cnn/compute_corelation.py
 ```
+META-SVR: Uses the prediction of the fine-tuned BERT model and the fine-tuned CLIP model to predict the queries performance:
+
+Firstly you will need to run and save the predctions for both models and point the paths to the apropriate files.
+```bash
+   poetry run python baselines/meta_svr/get_metrics.py
+   poetry run python baselines/meta_svr/meta_svr.py
+```
+
 ## Application: Query Reformulation
 We demonstrate an active use-case of QPP by training an LLM to reformulate queries to maximize their predicted retrieval performance.
 
