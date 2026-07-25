@@ -27,16 +27,27 @@ def group_predictions_by_query(predictions, dataset):
             "predictions and the dataset do not come from the same run."
         )
 
-    if len(dataset[0]) < 3:
+    if len(dataset[0]) < 4:
         raise ValueError(
             "The dataset uses the old (features, label) format. Regenerate it with "
-            "create_dataset_clip.py so every sample carries its query index."
+            "create_dataset_clip.py so every sample carries its query index and text."
         )
 
     groups = {}
     for prediction, sample in zip(predictions, dataset):
         groups.setdefault(sample[2], []).append(prediction)
     return groups
+
+
+def check_alignment(dataset, df):
+    """Checks that a query index points at the CSV row of the same query."""
+    for sample in dataset:
+        csv_query = str(df["Query"].iloc[sample[2]]).strip()
+        if csv_query != str(sample[3]).strip():
+            raise ValueError(
+                f"Query {sample[2]} is '{sample[3]}' in the jsonl but '{csv_query}' in "
+                "the metrics CSV: the two files are not in the same order."
+            )
 
 
 def compute_metric_of_each_query(group):
@@ -93,6 +104,7 @@ with open(TEST_DATASET_PATH, "rb") as f:
 
 df = pd.read_csv(METRICS_CSV_PATH)
 
+check_alignment(test_dataset, df)
 query_results = group_predictions_by_query(predictions, test_dataset)
 query_indices = sorted(query_results)
 print(f"{len(query_indices)} queries evaluated out of {len(df)} rows in the metrics CSV")
