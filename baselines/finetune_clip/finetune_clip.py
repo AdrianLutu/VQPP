@@ -134,5 +134,7 @@ with torch.no_grad():
     for combined_features, individual_score in test_loader:
         combined_features = combined_features.squeeze(1)
         pred = model(combined_features).squeeze(1)
-        test_predictions.extend(pred.tolist())
+        # The model is trained with BCEWithLogitsLoss, so it outputs logits. Store
+        # probabilities instead, because the evaluation thresholds these values.
+        test_predictions.extend(torch.sigmoid(pred).tolist())
 pickle.dump(test_predictions, open("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/clip_datasets/msrvtt_results.pickle", "wb"))

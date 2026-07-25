@@ -1,44 +1,73 @@
 import pickle
-import numpy as np
 import pandas as pd
 
 from scipy.stats import pearsonr, kendalltau
 
-with open("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/clip_datasets/msrvtt_results.pickle", "rb") as f:
-    predictions = pickle.load(f)
-print(f"Length {len(predictions)}")
-df = pd.read_csv("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/metrics/msrvtt_test.csv")
-rr = df["Reciprocal_Rank"].tolist()
-r10 = df["Recall@10"].tolist()
+PREDICTIONS_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/clip_datasets/msrvtt_results.pickle"
+TEST_DATASET_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/clip_datasets/msrvtt_clip_test.pickle"
+METRICS_CSV_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/metrics/msrvtt_test.csv"
 
-def split_into_groups(list, group_size):
-    return [list[i : i + group_size] for i in range(0, len(list), group_size)]
+# finetune_clip.py stores probabilities, so a candidate counts as predicted relevant
+# when its probability is at least 0.5.
+POSITIVE_THRESHOLD = 0.5
+
+
+def group_predictions_by_query(predictions, dataset):
+    """Groups the flat prediction list by the query index stored in the dataset.
+
+    The predictions are produced by a DataLoader built with shuffle=False, so element
+    i of the list corresponds to sample i of the dataset.
+    """
+    if not dataset:
+        raise ValueError(f"The dataset at {TEST_DATASET_PATH} is empty.")
+
+    if len(predictions) != len(dataset):
+        raise ValueError(
+            f"{len(predictions)} predictions for {len(dataset)} samples: the "
+            "predictions and the dataset do not come from the same run."
+        )
+
+    if len(dataset[0]) < 3:
+        raise ValueError(
+            "The dataset uses the old (features, label) format. Regenerate it with "
+            "create_dataset_clip.py so every sample carries its query index."
+        )
+
+    groups = {}
+    for prediction, sample in zip(predictions, dataset):
+        groups.setdefault(sample[2], []).append(prediction)
+    return groups
 
 
 def compute_metric_of_each_query(group):
+    """Predicted Recall@10 and Reciprocal Rank for a single query.
 
-    r10 = 0
+    group holds the predicted probability that each candidate is the ground-truth
+    video, in the order the retrieval system ranked the candidates.
+    """
+    # Recall@10: relevant candidates retrieved in the top 10, over the total number of
+    # relevant candidates. The relevant set is estimated by the candidates the model
+    # predicts as relevant. Slicing the group keeps this correct for queries with
+    # fewer than 10 candidates.
+    predicted_relevant = [score >= POSITIVE_THRESHOLD for score in group]
+    total_relevant = sum(predicted_relevant)
+    r10 = sum(predicted_relevant[:10]) / total_relevant if total_relevant else 0.0
 
-    for i in range(10):
-        if group[i] >= 0.5:
-            r10 += 1
-    r10 /= max(1, sum(1 for score in group if score >= 0.5))
-
-    mrr = 0
-
-    for i in range(len(group)):
-        if group[i] >= 0.5:
-            mrr = 1 / (i + 1)
+    # Reciprocal rank: the inverse of the rank of the first relevant candidate, 0 when
+    # no candidate is predicted relevant.
+    rr = 0.0
+    for rank, score in enumerate(group, start=1):
+        if score >= POSITIVE_THRESHOLD:
+            rr = 1.0 / rank
             break
 
-
-    return (r10, mrr)
+    return (r10, rr)
 
 
 def collect_metrics(all_metrics):
     r10s = [metric[0] for metric in all_metrics]
-    mrrs = [metric[1] for metric in all_metrics]
-    return r10s, mrrs
+    rrs = [metric[1] for metric in all_metrics]
+    return r10s, rrs
 
 
 def compute_correlations(map1, map2, title):
@@ -55,11 +84,26 @@ def compute_correlations(map1, map2, title):
     print()
 
 
-query_results = split_into_groups(predictions, 25)
-print(len(query_results))
-metrics = [compute_metric_of_each_query(group) for group in query_results]
+with open(PREDICTIONS_PATH, "rb") as f:
+    predictions = pickle.load(f)
+print(f"Length {len(predictions)}")
+
+with open(TEST_DATASET_PATH, "rb") as f:
+    test_dataset = pickle.load(f)
+
+df = pd.read_csv(METRICS_CSV_PATH)
+
+query_results = group_predictions_by_query(predictions, test_dataset)
+query_indices = sorted(query_results)
+print(f"{len(query_indices)} queries evaluated out of {len(df)} rows in the metrics CSV")
+
+metrics = [compute_metric_of_each_query(query_results[index]) for index in query_indices]
 predicted_r10, predicted_mrr = collect_metrics(metrics)
 
+# Compare only against the queries that actually produced predictions, otherwise the
+# ground truth would be shifted with respect to the predictions.
+r10 = df["Recall@10"].iloc[query_indices].tolist()
+rr = df["Reciprocal_Rank"].iloc[query_indices].tolist()
 
 compute_correlations(predicted_r10, r10, "  R10 Correlations")
 compute_correlations(predicted_mrr, rr, "RR Correlations")
