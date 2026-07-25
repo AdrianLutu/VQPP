@@ -3,6 +3,8 @@ import os
 import yt_dlp
 import subprocess
 
+from yt_dlp.utils import download_range_func
+
 ANNOTATION_FILE = "VATEX/vatex_training_v1.0.json"
 BASE_DIR = "VATEX/train"
 VIDEO_DIR = os.path.join(BASE_DIR, "videos")
@@ -25,7 +27,15 @@ def download_clip(entry):
     ydl_opts = {
         "format": "mp4[height<=480]",
         "outtmpl": clip_path,
-        "download_sections": {"*": [f"{int(start)}-{int(end)}"]},
+        # yt-dlp reads the requested sections from `download_ranges`, and expects a
+        # callable with the signature (info_dict, ydl). `download_sections` is the name
+        # of the command line flag, not of the API option, and unknown keys are ignored
+        # without any warning: the default is a single section with no start and no end,
+        # which downloads the whole video.
+        "download_ranges": download_range_func(None, [(int(start), int(end))]),
+        # Without this the cut lands on the nearest keyframe, which can be seconds away
+        # from the annotated segment.
+        "force_keyframes_at_cuts": True,
         "cookiesfrombrowser": ("firefox",),
         "quiet": True
     }
