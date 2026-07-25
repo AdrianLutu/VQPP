@@ -134,21 +134,35 @@ def load_and_align(csv_path, jsonl_path, target_metric, limit=None):
         return []
 
     df = pd.read_csv(csv_path)
-    preds_map = {}
+
+    # A caption can appear several times in the corpus, so every jsonl line is kept,
+    # grouped by query text and in file order. Storing a single list per text would let
+    # the last line win: all the rows sharing that caption would be paired with the same
+    # candidates, while keeping their own, different labels.
+    preds_map = collections.defaultdict(collections.deque)
     with open(jsonl_path, 'r') as f:
         for line in f:
             data = json.loads(line)
             query_text = [k for k in data.keys() if k != 'gt'][0]
-            preds_map[query_text] = data[query_text]
+            preds_map[query_text].append(data[query_text])
 
     aligned_data = []
+    rows_without_predictions = 0
     for _, row in df.iterrows():
         q = row['Query']
-        if q in preds_map:
-            aligned_data.append({'score': row[target_metric], 'video_ids': preds_map[q]})
+        candidates = preds_map.get(q)
+        if candidates:
+            # Each occurrence of the caption consumes its own line, so repeated captions
+            # keep receiving distinct candidate lists.
+            aligned_data.append({'score': row[target_metric], 'video_ids': candidates.popleft()})
+        else:
+            rows_without_predictions += 1
 
         if limit and len(aligned_data) >= limit:
             break
+
+    if rows_without_predictions:
+        print(f"{rows_without_predictions} rows of {csv_path} had no matching jsonl line.")
 
     return aligned_data
 
