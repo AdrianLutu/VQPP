@@ -5,6 +5,10 @@ import pickle
 # baselines/finetune_clip/compute_correlations.py, which computes the same metrics.
 POSITIVE_THRESHOLD = 0.5
 
+# Number of candidates per query assumed by datasets built before the query index was
+# stored with every sample.
+FALLBACK_GROUP_SIZE = 25
+
 # Every split needs the predictions and the dataset they were produced from: the
 # dataset holds the query index of each candidate, which is what defines the groups.
 # meta_svr.py consumes all three splits, so all three are written here.
@@ -49,10 +53,17 @@ def group_predictions_by_query(predictions, dataset, split):
         )
 
     if len(dataset[0]) < 3:
-        raise ValueError(
-            f"The {split} dataset uses the old (features, label) format. Regenerate it "
-            "with create_dataset_clip.py so every sample carries its query index."
+        # Datasets built before the query index was stored still load, using the old
+        # fixed-size grouping.
+        print(
+            f"The {split} dataset carries no query index, falling back to groups of "
+            f"{FALLBACK_GROUP_SIZE}. Regenerate it with create_dataset_clip.py: a query "
+            "that yields fewer candidates shifts every query after it."
         )
+        return {
+            index: predictions[start : start + FALLBACK_GROUP_SIZE]
+            for index, start in enumerate(range(0, len(predictions), FALLBACK_GROUP_SIZE))
+        }
 
     groups = {}
     for prediction, sample in zip(predictions, dataset):

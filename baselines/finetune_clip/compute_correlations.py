@@ -1,3 +1,4 @@
+import math
 import pickle
 import pandas as pd
 
@@ -10,6 +11,30 @@ METRICS_CSV_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/metrics/msrvt
 # finetune_clip.py stores probabilities, so a candidate counts as predicted relevant
 # when its probability is at least 0.5.
 POSITIVE_THRESHOLD = 0.5
+
+# Number of candidates per query assumed by datasets built before the query index was
+# stored with every sample.
+FALLBACK_GROUP_SIZE = 25
+
+
+def sigmoid(value):
+    if value >= 0:
+        return 1.0 / (1.0 + math.exp(-value))
+    exponential = math.exp(value)
+    return exponential / (1.0 + exponential)
+
+
+def as_probabilities(predictions):
+    """Converts predictions saved before finetune_clip.py applied the sigmoid itself.
+
+    Those runs stored raw logits, which would make POSITIVE_THRESHOLD mean a
+    probability of 0.62 instead of 0.5.
+    """
+    if all(0.0 <= prediction <= 1.0 for prediction in predictions):
+        return predictions
+
+    print("Predictions fall outside [0, 1], so they are logits: applying a sigmoid.")
+    return [sigmoid(prediction) for prediction in predictions]
 
 
 def group_predictions_by_query(predictions, dataset):
@@ -27,11 +52,18 @@ def group_predictions_by_query(predictions, dataset):
             "predictions and the dataset do not come from the same run."
         )
 
-    if len(dataset[0]) < 4:
-        raise ValueError(
-            "The dataset uses the old (features, label) format. Regenerate it with "
-            "create_dataset_clip.py so every sample carries its query index and text."
+    if len(dataset[0]) < 3:
+        # Datasets built before the query index was stored still load, using the old
+        # fixed-size grouping.
+        print(
+            f"The dataset carries no query index, falling back to groups of "
+            f"{FALLBACK_GROUP_SIZE}. Regenerate it with create_dataset_clip.py: a query "
+            "that yields fewer candidates shifts every query after it."
         )
+        return {
+            index: predictions[start : start + FALLBACK_GROUP_SIZE]
+            for index, start in enumerate(range(0, len(predictions), FALLBACK_GROUP_SIZE))
+        }
 
     groups = {}
     for prediction, sample in zip(predictions, dataset):
@@ -41,6 +73,10 @@ def group_predictions_by_query(predictions, dataset):
 
 def check_alignment(dataset, df):
     """Checks that a query index points at the CSV row of the same query."""
+    if len(dataset[0]) < 4 or "Query" not in df.columns:
+        print("No query text in the dataset or no Query column, skipping the check.")
+        return
+
     for sample in dataset:
         csv_query = str(df["Query"].iloc[sample[2]]).strip()
         if csv_query != str(sample[3]).strip():
@@ -98,6 +134,7 @@ def compute_correlations(map1, map2, title):
 with open(PREDICTIONS_PATH, "rb") as f:
     predictions = pickle.load(f)
 print(f"Length {len(predictions)}")
+predictions = as_probabilities(predictions)
 
 with open(TEST_DATASET_PATH, "rb") as f:
     test_dataset = pickle.load(f)
