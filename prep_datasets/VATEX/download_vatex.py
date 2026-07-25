@@ -56,20 +56,33 @@ def split_audio_video(clip_path):
 
     filename = os.path.splitext(os.path.basename(clip_path))[0]
     audio_path = os.path.join(AUDIO_DIR, f"{filename}.mp3")
-    video_only_path = os.path.join(VIDEO_DIR, f"{filename}.mp4")
 
-    # Extract audio
-    subprocess.run([
+    audio = subprocess.run([
         "ffmpeg", "-i", clip_path, "-q:a", "0", "-map", "a", audio_path, "-y"
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ], capture_output=True, text=True)
 
-    # Extract video without audio
-    subprocess.run([
-        "ffmpeg", "-i", clip_path, "-c", "copy", "-an", video_only_path, "-y"
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if audio.returncode == 0:
+        print(f" -> Audio saved: {audio_path}")
+    else:
+        print(f" -> No audio extracted for {filename}")
 
-    print(f" -> Audio saved: {audio_path}")
-    print(f" -> Video (no audio) saved: {video_only_path}")
+    # The video without audio has to go through a temporary file. Writing it straight
+    # back to clip_path would hand ffmpeg the same path as input and output: the output
+    # is opened for writing, which truncates the clip while it is still being read, so
+    # the downloaded file ends up corrupted with nothing reported.
+    temp_video_path = f"{clip_path}.tmp.mp4"
+    video = subprocess.run([
+        "ffmpeg", "-i", clip_path, "-c", "copy", "-an", temp_video_path, "-y"
+    ], capture_output=True, text=True)
+
+    if video.returncode != 0:
+        print(f" -> Failed to strip the audio track of {filename}, keeping the original")
+        if os.path.exists(temp_video_path):
+            os.remove(temp_video_path)
+        return
+
+    os.replace(temp_video_path, clip_path)
+    print(f" -> Video (no audio) saved: {clip_path}")
 
 
 def main():
