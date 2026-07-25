@@ -100,18 +100,33 @@ def get_video_embedding(video_id):
 
 
 def generate_corr_matrix(video_ids):
+    """Correlation matrix of the videos retrieved for a query.
+
+    Entry (i, j) correlates video i with video j across the 512 CLIP dimensions, so the
+    matrix describes how tight or how scattered the retrieved set is, which is the
+    signal the CNN reads. Correlating the transposed matrix instead relates the 512
+    dimensions to each other: that describes the CLIP embedding space rather than the
+    retrieved set, and estimates 512 variables from at most MAX_VIDEOS_PER_QUERY
+    observations.
+
+    The matrix is padded to a fixed MAX_VIDEOS_PER_QUERY square so that every sample
+    has the same shape and the DataLoader can batch them.
+    """
     embeddings = []
     for v_id in video_ids[:MAX_VIDEOS_PER_QUERY]:
         emb = get_video_embedding(v_id)
         if emb is not None:
             embeddings.append(emb)
 
+    padded = np.zeros((MAX_VIDEOS_PER_QUERY, MAX_VIDEOS_PER_QUERY), dtype=np.float32)
+
     if len(embeddings) < 2:
-        return np.zeros((512, 512), dtype=np.float32)
+        return padded
 
     matrix = np.vstack(embeddings)
-    corr = np.corrcoef(matrix.T)
-    return np.nan_to_num(corr).astype(np.float32)
+    corr = np.nan_to_num(np.corrcoef(matrix))
+    padded[: corr.shape[0], : corr.shape[1]] = corr
+    return padded
 
 
 def load_and_align(csv_path, jsonl_path, target_metric, limit=None):
