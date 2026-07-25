@@ -29,7 +29,9 @@ class CustomDataset(torch.utils.data.Dataset):
         self.dataset = dataset
 
     def __getitem__(self, index):
-        combined_features, individual_score = self.dataset[index]
+        # Samples are (features, label, query_index) triplets; the query index is only
+        # needed by the evaluation, so it is dropped here.
+        combined_features, individual_score = self.dataset[index][:2]
         return (
             torch.tensor(combined_features, dtype=torch.float).to(device),
             torch.tensor(individual_score, dtype=torch.float).to(device),
