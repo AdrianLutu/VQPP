@@ -63,6 +63,26 @@ def clean_generated_text(text):
 
     return text.strip()
 
+SYSTEM_MESSAGE = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
+
+# Training prompts carry this example, so generation has to use it too: a prompt built
+# without it is a format the policy was never trained on.
+ONE_SHOT_EXAMPLE = (
+    "<|user|>\nfunny cat videos<|end|>\n"
+    "<|assistant|>\ncompilation of funny cats playing<|end|>\n"
+)
+
+
+def build_prompt(query):
+    """The single prompt format, used for training, validation and test generation."""
+    return (
+        f"<|system|>\n{SYSTEM_MESSAGE}<|end|>\n"
+        f"{ONE_SHOT_EXAMPLE}"
+        f"<|user|>\n{query}<|end|>\n"
+        f"<|assistant|>\n"
+    )
+
+
 class BertRegressor(nn.Module):
     def __init__(self, n_outputs=1):
         super(BertRegressor, self).__init__()
@@ -119,11 +139,7 @@ class ValidationScoreCallback(TrainerCallback):
         self.val_df = pd.read_csv(val_csv_path)
         self.tokenizer = tokenizer
         self.judge = judge
-        self.prompts = []
-        sys_msg = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
-        for q in self.val_df['query']: 
-            txt = f"<|system|>\n{sys_msg}<|end|>\n<|user|>\n{q}<|end|>\n<|assistant|>\n"
-            self.prompts.append(txt)
+        self.prompts = [build_prompt(q) for q in self.val_df['query']]
 
     def on_step_end(self, args, state, control, model, **kwargs):
         if state.global_step % args.save_steps == 0 and state.global_step > 0:
@@ -162,11 +178,7 @@ class TestSetGenerationCallback(TrainerCallback):
         self.test_df = pd.read_csv(test_csv_path)
         self.tokenizer = tokenizer
         self.output_dir = output_dir
-        self.prompts = []
-        sys_msg = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
-        for q in self.test_df['Query']:
-            txt = f"<|system|>\n{sys_msg}<|end|>\n<|user|>\n{q}<|end|>\n<|assistant|>\n"
-            self.prompts.append(txt)
+        self.prompts = [build_prompt(q) for q in self.test_df['Query']]
 
     def on_save(self, args, state, control, model, **kwargs):
         step = state.global_step
@@ -234,20 +246,7 @@ def train():
     bert_judge = CustomBertJudge(reward_model, reward_tokenizer)
 
     def format_prompt(example):
-        sys_msg = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
-
-        one_shot = (
-            "<|user|>\nfunny cat videos<|end|>\n"
-            "<|assistant|>\ncompilation of funny cats playing<|end|>\n"
-        )
-        return {
-            "prompt": (
-                f"<|system|>\n{sys_msg}<|end|>\n"
-                f"{one_shot}"
-                f"<|user|>\n{example['query']}<|end|>\n"
-                f"<|assistant|>\n"
-            )
-        }
+        return {"prompt": build_prompt(example['query'])}
 
     ds_train = load_dataset("csv", data_files=TRAIN_FILE, split="train").map(format_prompt)
 
