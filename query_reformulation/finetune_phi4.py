@@ -95,19 +95,24 @@ class CustomBertJudge:
         return scores.flatten().cpu().tolist()
 
     def judge(self, prompts, completions, **kwargs):
+        """Returns the rank of the first completion of every pair.
+
+        OnlineDPOTrainer reads this as a rank, not as a probability: 0 means the first
+        completion wins, 1 means the second one does (it builds its chosen/rejected
+        mask with `rank == 0`). The higher reward therefore has to map to the lower
+        index, otherwise the completion with the worse QPP score is the one marked as
+        chosen and the policy is trained to lower it.
+        """
         flat_completions = [c for pair in completions for c in pair]
-        
+
         cleaned_queries = [clean_generated_text(str(c)) for c in flat_completions]
-        
+
         flat_scores = self.get_scores(cleaned_queries)
 
-        decision_probs = []
+        ranks = []
         for i in range(0, len(flat_scores), 2):
-            if flat_scores[i] > flat_scores[i+1]:
-                decision_probs.append(1.0)
-            else:
-                decision_probs.append(0.0)
-        return decision_probs
+            ranks.append(0 if flat_scores[i] >= flat_scores[i + 1] else 1)
+        return ranks
 
 class ValidationScoreCallback(TrainerCallback):
     def __init__(self, val_csv_path, tokenizer, judge):
