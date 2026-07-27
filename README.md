@@ -28,7 +28,7 @@ This project is managed using [Poetry](https://python-poetry.org/) and requires 
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/yourusername/VQPP.git](https://github.com/yourusername/VQPP.git)
+   git clone [https://github.com/AdrianLutu/VQPP.git](https://github.com/AdrianLutu/VQPP.git)
    cd VQPP
     ```
 2. Install dependencies with Poetry: This will automatically create a virtual environment and install all required packages (including PyTorch with CUDA support as specified in pyproject.toml).
