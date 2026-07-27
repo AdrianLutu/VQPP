@@ -63,6 +63,26 @@ def clean_generated_text(text):
 
     return text.strip()
 
+SYSTEM_MESSAGE = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
+
+# Training prompts carry this example, so generation has to use it too: a prompt built
+# without it is a format the policy was never trained on.
+ONE_SHOT_EXAMPLE = (
+    "<|user|>\nfunny cat videos<|end|>\n"
+    "<|assistant|>\ncompilation of funny cats playing<|end|>\n"
+)
+
+
+def build_prompt(query):
+    """The single prompt format, used for training, validation and test generation."""
+    return (
+        f"<|system|>\n{SYSTEM_MESSAGE}<|end|>\n"
+        f"{ONE_SHOT_EXAMPLE}"
+        f"<|user|>\n{query}<|end|>\n"
+        f"<|assistant|>\n"
+    )
+
+
 class BertRegressor(nn.Module):
     def __init__(self, n_outputs=1):
         super(BertRegressor, self).__init__()
@@ -95,30 +115,31 @@ class CustomBertJudge:
         return scores.flatten().cpu().tolist()
 
     def judge(self, prompts, completions, **kwargs):
+        """Returns the rank of the first completion of every pair.
+
+        OnlineDPOTrainer reads this as a rank, not as a probability: 0 means the first
+        completion wins, 1 means the second one does (it builds its chosen/rejected
+        mask with `rank == 0`). The higher reward therefore has to map to the lower
+        index, otherwise the completion with the worse QPP score is the one marked as
+        chosen and the policy is trained to lower it.
+        """
         flat_completions = [c for pair in completions for c in pair]
-        
+
         cleaned_queries = [clean_generated_text(str(c)) for c in flat_completions]
-        
+
         flat_scores = self.get_scores(cleaned_queries)
 
-        decision_probs = []
+        ranks = []
         for i in range(0, len(flat_scores), 2):
-            if flat_scores[i] > flat_scores[i+1]:
-                decision_probs.append(1.0)
-            else:
-                decision_probs.append(0.0)
-        return decision_probs
+            ranks.append(0 if flat_scores[i] >= flat_scores[i + 1] else 1)
+        return ranks
 
 class ValidationScoreCallback(TrainerCallback):
     def __init__(self, val_csv_path, tokenizer, judge):
         self.val_df = pd.read_csv(val_csv_path)
         self.tokenizer = tokenizer
         self.judge = judge
-        self.prompts = []
-        sys_msg = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
-        for q in self.val_df['query']: 
-            txt = f"<|system|>\n{sys_msg}<|end|>\n<|user|>\n{q}<|end|>\n<|assistant|>\n"
-            self.prompts.append(txt)
+        self.prompts = [build_prompt(q) for q in self.val_df['query']]
 
     def on_step_end(self, args, state, control, model, **kwargs):
         if state.global_step % args.save_steps == 0 and state.global_step > 0:
@@ -157,11 +178,7 @@ class TestSetGenerationCallback(TrainerCallback):
         self.test_df = pd.read_csv(test_csv_path)
         self.tokenizer = tokenizer
         self.output_dir = output_dir
-        self.prompts = []
-        sys_msg = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
-        for q in self.test_df['Query']:
-            txt = f"<|system|>\n{sys_msg}<|end|>\n<|user|>\n{q}<|end|>\n<|assistant|>\n"
-            self.prompts.append(txt)
+        self.prompts = [build_prompt(q) for q in self.test_df['Query']]
 
     def on_save(self, args, state, control, model, **kwargs):
         step = state.global_step
@@ -229,20 +246,7 @@ def train():
     bert_judge = CustomBertJudge(reward_model, reward_tokenizer)
 
     def format_prompt(example):
-        sys_msg = "Reformulate the user query to maximize retrieval. Output ONLY the reformulated query."
-
-        one_shot = (
-            "<|user|>\nfunny cat videos<|end|>\n"
-            "<|assistant|>\ncompilation of funny cats playing<|end|>\n"
-        )
-        return {
-            "prompt": (
-                f"<|system|>\n{sys_msg}<|end|>\n"
-                f"{one_shot}"
-                f"<|user|>\n{example['query']}<|end|>\n"
-                f"<|assistant|>\n"
-            )
-        }
+        return {"prompt": build_prompt(example['query'])}
 
     ds_train = load_dataset("csv", data_files=TRAIN_FILE, split="train").map(format_prompt)
 

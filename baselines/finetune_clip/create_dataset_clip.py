@@ -82,8 +82,22 @@ def load_video_frames(video_path, num_frames_to_sample, training=True):
     return torch.stack(frame_tensors).to(DEVICE)
 
 def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Processing"):
+    """Builds (features, label, query_index, query_text) samples.
+
+    query_index is the 0-based line number of the query in the jsonl file, which is
+    assumed to follow the same order as the rows of the matching metrics CSV. It is
+    stored explicitly because a query does not always contribute the same number of
+    candidates (missing videos are skipped, and a jsonl line may hold fewer than
+    MAX_VIDEOS_PER_QUERY ids), so the evaluation cannot recover the grouping by
+    slicing the flat prediction list into fixed-size chunks.
+
+    query_text lets the evaluation check that assumption against the Query column of
+    the CSV instead of trusting it.
+    """
     dataset_pairs = []
-    for line in tqdm(lines, desc=pbar_desc):
+    skipped_videos = 0
+
+    for query_index, line in enumerate(tqdm(lines, desc=pbar_desc)):
         try:
             data = json.loads(line)
             gt_id = data.get('gt')
@@ -117,7 +131,9 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
                         v_path = os.path.join(TEST_VIDEO_FOLDER, f"{video_id}{VIDEO_EXTENSION}")
                         frame_tensor = load_video_frames(v_path, NUM_FRAMES_TO_SAMPLE)
 
-                    if frame_tensor is None: continue
+                    if frame_tensor is None:
+                        skipped_videos += 1
+                        continue
 
                     visual_output = vision_model(frame_tensor)["image_embeds"]
                     visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True)
@@ -129,7 +145,13 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
 
                 score = 1 if video_id == gt_id else 0
                 combined_features = np.hstack((text_emb, video_emb))
-                dataset_pairs.append((combined_features, score))
+                # Store the query this candidate belongs to, so the evaluation can group
+                # predictions per query instead of assuming fixed-size chunks, and can
+                # check the query against the CSV row it is compared with.
+                dataset_pairs.append((combined_features, score, query_index, query_text))
+
+    if skipped_videos:
+        print(f"[{pbar_desc}] Skipped {skipped_videos} candidate videos that could not be loaded.")
 
     return dataset_pairs
 

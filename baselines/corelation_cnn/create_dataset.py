@@ -100,18 +100,33 @@ def get_video_embedding(video_id):
 
 
 def generate_corr_matrix(video_ids):
+    """Correlation matrix of the videos retrieved for a query.
+
+    Entry (i, j) correlates video i with video j across the 512 CLIP dimensions, so the
+    matrix describes how tight or how scattered the retrieved set is, which is the
+    signal the CNN reads. Correlating the transposed matrix instead relates the 512
+    dimensions to each other: that describes the CLIP embedding space rather than the
+    retrieved set, and estimates 512 variables from at most MAX_VIDEOS_PER_QUERY
+    observations.
+
+    The matrix is padded to a fixed MAX_VIDEOS_PER_QUERY square so that every sample
+    has the same shape and the DataLoader can batch them.
+    """
     embeddings = []
     for v_id in video_ids[:MAX_VIDEOS_PER_QUERY]:
         emb = get_video_embedding(v_id)
         if emb is not None:
             embeddings.append(emb)
 
+    padded = np.zeros((MAX_VIDEOS_PER_QUERY, MAX_VIDEOS_PER_QUERY), dtype=np.float32)
+
     if len(embeddings) < 2:
-        return np.zeros((512, 512), dtype=np.float32)
+        return padded
 
     matrix = np.vstack(embeddings)
-    corr = np.corrcoef(matrix.T)
-    return np.nan_to_num(corr).astype(np.float32)
+    corr = np.nan_to_num(np.corrcoef(matrix))
+    padded[: corr.shape[0], : corr.shape[1]] = corr
+    return padded
 
 
 def load_and_align(csv_path, jsonl_path, target_metric, limit=None):
@@ -119,21 +134,35 @@ def load_and_align(csv_path, jsonl_path, target_metric, limit=None):
         return []
 
     df = pd.read_csv(csv_path)
-    preds_map = {}
+
+    # A caption can appear several times in the corpus, so every jsonl line is kept,
+    # grouped by query text and in file order. Storing a single list per text would let
+    # the last line win: all the rows sharing that caption would be paired with the same
+    # candidates, while keeping their own, different labels.
+    preds_map = collections.defaultdict(collections.deque)
     with open(jsonl_path, 'r') as f:
         for line in f:
             data = json.loads(line)
             query_text = [k for k in data.keys() if k != 'gt'][0]
-            preds_map[query_text] = data[query_text]
+            preds_map[query_text].append(data[query_text])
 
     aligned_data = []
+    rows_without_predictions = 0
     for _, row in df.iterrows():
         q = row['Query']
-        if q in preds_map:
-            aligned_data.append({'score': row[target_metric], 'video_ids': preds_map[q]})
+        candidates = preds_map.get(q)
+        if candidates:
+            # Each occurrence of the caption consumes its own line, so repeated captions
+            # keep receiving distinct candidate lists.
+            aligned_data.append({'score': row[target_metric], 'video_ids': candidates.popleft()})
+        else:
+            rows_without_predictions += 1
 
         if limit and len(aligned_data) >= limit:
             break
+
+    if rows_without_predictions:
+        print(f"{rows_without_predictions} rows of {csv_path} had no matching jsonl line.")
 
     return aligned_data
 

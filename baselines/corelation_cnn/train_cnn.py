@@ -116,7 +116,9 @@ predictions = []
 with torch.no_grad():
     for images, _ in test_loader:
         outputs = model(images.to(device))
-        predictions.extend(outputs.squeeze().tolist())
+        # A bare squeeze() turns a single-sample batch into a 0-d tensor, whose
+        # tolist() returns a float and makes extend() raise a TypeError.
+        predictions.extend(outputs.squeeze(-1).tolist())
 
 with open("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/test_predictions.pickle", "wb") as f:
     pickle.dump(predictions, f)

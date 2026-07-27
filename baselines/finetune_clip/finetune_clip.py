@@ -29,7 +29,9 @@ class CustomDataset(torch.utils.data.Dataset):
         self.dataset = dataset
 
     def __getitem__(self, index):
-        combined_features, individual_score = self.dataset[index]
+        # Samples are (features, label, query_index) triplets; the query index is only
+        # needed by the evaluation, so it is dropped here.
+        combined_features, individual_score = self.dataset[index][:2]
         return (
             torch.tensor(combined_features, dtype=torch.float).to(device),
             torch.tensor(individual_score, dtype=torch.float).to(device),
@@ -132,5 +134,7 @@ with torch.no_grad():
     for combined_features, individual_score in test_loader:
         combined_features = combined_features.squeeze(1)
         pred = model(combined_features).squeeze(1)
-        test_predictions.extend(pred.tolist())
+        # The model is trained with BCEWithLogitsLoss, so it outputs logits. Store
+        # probabilities instead, because the evaluation thresholds these values.
+        test_predictions.extend(torch.sigmoid(pred).tolist())
 pickle.dump(test_predictions, open("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/clip_datasets/msrvtt_results.pickle", "wb"))

@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
-import scipy
+import scipy.stats
 import json
 from groq import Groq
 from api_key import *
@@ -65,6 +65,14 @@ def get_embeddings_safe(text_list):
                     all_embeddings.extend([[0.0] * 768] * len(batch))
                     success = True
 
+        if not success:
+            # Without this the batch would contribute no embedding at all, and every
+            # later query would shift by one row. The neighbour indices are used as
+            # df_train.iloc[idx], so the prompt would then quote another query's recall.
+            print(f"\nBatch starting at index {i} failed after {retry_count} retries; "
+                  "using zero vectors to keep the embeddings aligned with the queries.")
+            all_embeddings.extend([[0.0] * 768] * len(batch))
+
     return np.array(all_embeddings)
 
 def predict_rank_with_groq(val_query, similar_examples):
@@ -106,7 +114,11 @@ def main():
     df_train = pd.read_csv('VAST\\vatex_train.csv')
     df_val = pd.read_csv('VAST\\vatex_test.csv')
 
-    scores = df_val["Recall@10"].tolist()
+    # Ground truth is collected next to the predictions, inside the loop. Taking the
+    # whole column up front would leave the two lists shifted as soon as a query is
+    # skipped, and calculate_correlations would then return a string instead of the
+    # four values the caller unpacks.
+    scores = []
 
     train_queries = df_train['Query'].astype(str).tolist()
     
@@ -159,7 +171,8 @@ def main():
             print(f"Query: {val_query} | Failed to get response")
         
         results.append(final_rank)
-        
+        scores.append(row["Recall@10"])
+
         time.sleep(4)
 
     pearson_corr, pvaluep, kendall_corr, pvalue = calculate_correlations(

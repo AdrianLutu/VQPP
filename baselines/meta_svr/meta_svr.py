@@ -21,9 +21,27 @@ bert_train = bert_train_df['Predicted_Score'].to_list()
 bert_val = bert_val_df['Predicted_Score'].to_list()
 bert_test = bert_test_df['Predicted_Score'].to_list()
 
-train = list(zip(bert_train, clip_train))
-val = list(zip(bert_val, clip_val))
-test = list(zip(bert_test, clip_test))
+def pair_estimators(bert_scores, clip_scores, split):
+    """Pairs the BERT score and the CLIP score of the same query.
+
+    The pairing is positional, so it is only correct when both lists cover the same
+    queries in the same order: the BERT scores come from the rows of the predictions
+    CSV, the CLIP scores from get_metrics.py. zip() stops at the shorter list without
+    reporting anything, which pairs scores belonging to different queries and only
+    surfaces later as an unrelated error, so the lengths are checked here instead.
+    """
+    if len(bert_scores) != len(clip_scores):
+        raise ValueError(
+            f"{split}: {len(bert_scores)} BERT scores and {len(clip_scores)} CLIP "
+            "scores. The two estimators must cover the same queries, in the same "
+            "order; regenerate them before training the meta model."
+        )
+    return list(zip(bert_scores, clip_scores))
+
+
+train = pair_estimators(bert_train, clip_train, "train")
+val = pair_estimators(bert_val, clip_val, "val")
+test = pair_estimators(bert_test, clip_test, "test")
 
 
 train_target = bert_train_df['Reciprocal_Rank'].to_list()
