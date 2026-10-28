@@ -2,9 +2,13 @@ import pickle
 import numpy as np
 from scipy.stats import pearsonr, kendalltau
 
-PREDICTIONS_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/test_predictions.pickle"
+# Must match TARGET_METRIC in create_dataset.py: the files of each metric carry its suffix.
+TARGET_METRIC = 'Recall@10'  # Options: 'Recall@10', 'Reciprocal_Rank'
+METRIC_SUFFIX = {'Recall@10': 'rec', 'Reciprocal_Rank': 'rr'}[TARGET_METRIC]
 
-TEST_DATASET_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_test_rec.pickle"
+PREDICTIONS_PATH = f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/test_predictions_{METRIC_SUFFIX}.pickle"
+
+TEST_DATASET_PATH = f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_test_{METRIC_SUFFIX}.pickle"
 
 def load_predictions(path):
     with open(path, "rb") as f:
