@@ -82,14 +82,15 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
     query_index is the 0-based line number of the query in the jsonl file, which is
     assumed to follow the same order as the rows of the matching metrics CSV. It is
     stored explicitly because a query does not always contribute the same number of
-    candidates (a jsonl line may hold fewer than MAX_VIDEOS_PER_QUERY ids), so the
-    evaluation cannot recover the grouping by slicing the flat prediction list into
-    fixed-size chunks.
+    candidates (missing videos are skipped, and a jsonl line may hold fewer than
+    MAX_VIDEOS_PER_QUERY ids), so the evaluation cannot recover the grouping by
+    slicing the flat prediction list into fixed-size chunks.
 
     query_text lets the evaluation check that assumption against the Query column of
     the CSV instead of trusting it.
     """
     dataset_pairs = []
+    skipped_videos = 0
 
     for query_index, line in enumerate(tqdm(lines, desc=pbar_desc)):
         try:
@@ -133,7 +134,12 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
                         frame_tensor = load_video_frames(video_path, NUM_FRAMES_TO_SAMPLE)
 
                     if frame_tensor is None:
-                        frame_tensor = torch.zeros(NUM_FRAMES_TO_SAMPLE, 3, 224, 224).to(DEVICE)
+                        # Skipped, as in create_dataset_clip.py. A stand-in of blank frames
+                        # would give every missing video the same embedding, kept as a real
+                        # candidate, and labelled 1 whenever the missing video is the
+                        # ground truth.
+                        skipped_videos += 1
+                        continue
 
                     visual_output = vision_model(frame_tensor)["image_embeds"]
                     visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True)
@@ -149,6 +155,9 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
                 # predictions per query instead of assuming fixed-size chunks, and can
                 # check the query against the CSV row it is compared with.
                 dataset_pairs.append((combined_features, score, query_index, query_text))
+
+    if skipped_videos:
+        print(f"[{pbar_desc}] Skipped {skipped_videos} candidate videos that could not be loaded.")
 
     return dataset_pairs
 
