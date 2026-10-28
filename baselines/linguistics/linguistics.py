@@ -9,11 +9,11 @@ Original file is located at
 
 from nltk.tokenize import word_tokenize, sent_tokenize
 import nltk
+import os
 import re
 from nltk.corpus import words as nltk_words
 import string
 import pandas as pd
-import spacy
 import pickle
 import scipy.stats
 from nltk.corpus import stopwords
@@ -244,8 +244,14 @@ def average_prepositions_per_word(text):
 
     return average_occurrence
 
-avg_scores_r10_test = pd.read_csv("C:\\Users\\Adi\\Desktop\\VQPP\\VAST\\msrvtt_test.csv")[["Query", "Recall@10"]]
-avg_scores_rr_test = pd.read_csv("C:\\Users\\Adi\\Desktop\\VQPP\\VAST\\msrvtt_test.csv")[["Query", "Reciprocal_Rank"]]
+RETRIEVAL_MODEL = "VAST"  # Options: "GRAM", "VAST"
+DATASET = "msrvtt"  # Options: "msrvtt", "vatex"
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TEST_CSV_PATH = os.path.join(REPO_ROOT, "resources", RETRIEVAL_MODEL, "metrics", f"{DATASET}_test.csv")
+
+avg_scores_r10_test = pd.read_csv(TEST_CSV_PATH)[["Query", "Recall@10"]]
+avg_scores_rr_test = pd.read_csv(TEST_CSV_PATH)[["Query", "Reciprocal_Rank"]]
 
 metrics = pd.DataFrame([])
 
