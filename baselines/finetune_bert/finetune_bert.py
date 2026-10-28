@@ -44,11 +44,29 @@ from tqdm import tqdm
 
 import numpy as np
 
-METRIC = "Reciprocal_Rank"
+import os
 
-df_train = pd.read_csv("/root/VQPP/resources/GRAM/metrics/vatex_train.csv")
-df_eval = pd.read_csv("/root/VQPP/resources/GRAM/metrics/vatex_val.csv")
-df_test = pd.read_csv("/root/VQPP/resources/GRAM/metrics/vatex_test.csv")
+RETRIEVAL_MODEL = "GRAM"  # Options: "GRAM", "VAST"
+DATASET = "vatex"  # Options: "msrvtt", "vatex"
+METRIC = "Reciprocal_Rank"  # Options: "Reciprocal_Rank", "Recall@10"
+
+# Number of epochs without an improvement of the validation MSE before a run stops.
+PATIENCE = 3
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+METRICS_DIR = os.path.join(REPO_ROOT, "resources", RETRIEVAL_MODEL, "metrics")
+
+# Every configuration gets its own checkpoint, so the query reformulation scripts can load
+# the predictor they need (GRAM, MSR-VTT, Recall@10) instead of whichever run came last.
+RUN_NAME = f"bert_{RETRIEVAL_MODEL}_{DATASET}_{'rr' if METRIC == 'Reciprocal_Rank' else 'r10'}"
+OUTPUT_DIR = os.path.join(REPO_ROOT, "baselines", "finetune_bert", "checkpoints")
+CHECKPOINT_PATH = os.path.join(OUTPUT_DIR, f"{RUN_NAME}.pth")
+PREDICTIONS_PATH = os.path.join(OUTPUT_DIR, f"{RUN_NAME}_test_predictions.csv")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+df_train = pd.read_csv(os.path.join(METRICS_DIR, f"{DATASET}_train.csv"))
+df_eval = pd.read_csv(os.path.join(METRICS_DIR, f"{DATASET}_val.csv"))
+df_test = pd.read_csv(os.path.join(METRICS_DIR, f"{DATASET}_test.csv"))
 
 
 df_train = df_train[["Query", METRIC]]
@@ -89,9 +107,13 @@ class BertRegressor(nn.Module):
         super(BertRegressor, self).__init__()
         self.bert = BertModel.from_pretrained("bert-base-cased")
 
+        # Only part of BERT is fine-tuned: the last encoder layer, the pooler and the
+        # regression head. The other 11 encoder layers and the embeddings stay frozen.
+        # The head reads the pooler output (the [CLS] state passed through BERT's
+        # dense + tanh layer), not the raw [CLS] state. See the notes in the README.
         for param in self.bert.parameters():
             param.requires_grad = False
-            
+
         for param in self.bert.encoder.layer[-1].parameters():
             param.requires_grad = True
             
@@ -162,6 +184,12 @@ for lr in param_grid["learning_rate"]:
 
             optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=decay)
 
+            # Early stopping: the model is evaluated after every epoch, the best epoch is
+            # the one kept, and the run stops once the validation MSE has not improved
+            # for PATIENCE epochs.
+            best_run_mse = float("inf")
+            epochs_without_improvement = 0
+
             for epoch in range(epochs):
                 model.train()
                 for i, batch in tqdm(enumerate(train_loader), total=len(train_loader),desc=f"Epoch {epoch}"):
@@ -172,25 +200,35 @@ for lr in param_grid["learning_rate"]:
                     loss.backward()
                     optimizer.step()
 
-            mse_eval, r_squared_eval = evaluate_model(model, eval_loader)
-            print(
-                f"LR: {lr}, Epochs: {epochs}, Weight Decay: {decay}, Eval MSE: {mse_eval}, Eval R-squared: {r_squared_eval}"
-            )
+                mse_eval, r_squared_eval = evaluate_model(model, eval_loader)
+                print(
+                    f"LR: {lr}, Epoch: {epoch + 1}/{epochs}, Weight Decay: {decay}, Eval MSE: {mse_eval}, Eval R-squared: {r_squared_eval}"
+                )
 
-            if mse_eval < best_mse:
-                best_mse = mse_eval
-                best_params = {
-                    "learning_rate": lr,
-                    "num_epochs": epochs,
-                    "weight_decay": decay,
-                }
+                if mse_eval < best_run_mse:
+                    best_run_mse = mse_eval
+                    epochs_without_improvement = 0
+                else:
+                    epochs_without_improvement += 1
 
-                torch.save(model.state_dict(), "best_model.pth")
+                if mse_eval < best_mse:
+                    best_mse = mse_eval
+                    best_params = {
+                        "learning_rate": lr,
+                        "num_epochs": epoch + 1,
+                        "weight_decay": decay,
+                    }
+
+                    torch.save(model.state_dict(), CHECKPOINT_PATH)
+
+                if epochs_without_improvement >= PATIENCE:
+                    print(f"Early stopping after epoch {epoch + 1}: no improvement for {PATIENCE} epochs.")
+                    break
 
 print(f"Best Parameters: {best_params}")
 
 model = BertRegressor()
-model.load_state_dict(torch.load("best_model.pth"))
+model.load_state_dict(torch.load(CHECKPOINT_PATH))
 model.to(device)
 print("loaded")
 
@@ -211,8 +249,7 @@ predictions_scores = [float(pred) for pred in all_predictions]
 
 
 predictions_df = pd.DataFrame(predictions_scores, columns=["predicted_score"])
-predictions_csv_path = "predicted_score_avg_scores_rr.csv"
-predictions_df.to_csv(predictions_csv_path, index=False)
+predictions_df.to_csv(PREDICTIONS_PATH, index=False)
 
 
 def calculate_correlations(list1, list2):

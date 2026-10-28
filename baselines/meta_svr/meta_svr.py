@@ -1,21 +1,22 @@
+import os
 import pandas as pd
 import pickle
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error
 from scipy.stats import pearsonr, kendalltau
 
-with open(r".\clip_results\VAST\msrvtt_train_rr.pickle", "rb") as ct:
+with open(os.path.join("clip_results", "VAST", "msrvtt_train_rr.pickle"), "rb") as ct:
     clip_train = pickle.load(ct)
 
-with open(r".\clip_results\VAST\msrvtt_val_rr.pickle", "rb") as cv:
+with open(os.path.join("clip_results", "VAST", "msrvtt_val_rr.pickle"), "rb") as cv:
     clip_val = pickle.load(cv)
 
-with open(r".\clip_results\VAST\msrvtt_test_rr.pickle", "rb") as ctst:
+with open(os.path.join("clip_results", "VAST", "msrvtt_test_rr.pickle"), "rb") as ctst:
     clip_test = pickle.load(ctst)
 
-bert_train_df = pd.read_csv(r".\finetune_bert_result\VAST\RR\msrvtt_train_predictions.csv")
-bert_val_df = pd.read_csv(r".\finetune_bert_result\VAST\RR\msrvtt_val_predictions.csv")
-bert_test_df = pd.read_csv(r".\finetune_bert_result\VAST\RR\msrvtt_test_predictions.csv")
+bert_train_df = pd.read_csv(os.path.join("finetune_bert_result", "VAST", "RR", "msrvtt_train_predictions.csv"))
+bert_val_df = pd.read_csv(os.path.join("finetune_bert_result", "VAST", "RR", "msrvtt_val_predictions.csv"))
+bert_test_df = pd.read_csv(os.path.join("finetune_bert_result", "VAST", "RR", "msrvtt_test_predictions.csv"))
 
 bert_train = bert_train_df['Predicted_Score'].to_list()
 bert_val = bert_val_df['Predicted_Score'].to_list()

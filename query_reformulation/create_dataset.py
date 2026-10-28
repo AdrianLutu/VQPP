@@ -6,15 +6,21 @@ from transformers import BertModel, BertTokenizer
 from tqdm import tqdm
 import os
 
-TRAIN_INPUT_CSV = "/root/VQPP/resources/GRAM/metrics/msrvtt_train.csv"
-VAL_INPUT_CSV   = "/root/VQPP/resources/GRAM/metrics/msrvtt_val.csv"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-MODEL_PATH = "/root/VQPP/baselines/finetune_bert/best_model.pth"
+TRAIN_INPUT_CSV = os.path.join(REPO_ROOT, "resources", "GRAM", "metrics", "msrvtt_train.csv")
+VAL_INPUT_CSV   = os.path.join(REPO_ROOT, "resources", "GRAM", "metrics", "msrvtt_val.csv")
+
+# The BERT predictor of GRAM Recall@10 on MSR-VTT, written by
+# baselines/finetune_bert/finetune_bert.py run with RETRIEVAL_MODEL = "GRAM",
+# DATASET = "msrvtt" and METRIC = "Recall@10".
+MODEL_PATH = os.path.join(REPO_ROOT, "baselines", "finetune_bert", "checkpoints", "bert_GRAM_msrvtt_r10.pth")
 GT_RECALL_THRESHOLD = 0.1
 BATCH_SIZE = 128
 
-OUTPUT_TRAIN_CSV = "/root/VQPP/rephrasing/train_dpo.csv"
-OUTPUT_VAL_CSV   = "/root/VQPP/rephrasing/validation_dpo.csv"
+OUTPUT_DIR = os.path.join(REPO_ROOT, "query_reformulation", "outputs")
+OUTPUT_TRAIN_CSV = os.path.join(OUTPUT_DIR, "train_dpo.csv")
+OUTPUT_VAL_CSV   = os.path.join(OUTPUT_DIR, "validation_dpo.csv")
 
 class BertRegressor(nn.Module):
     def __init__(self, n_outputs=1):
@@ -61,7 +67,8 @@ def process_and_save():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
     model = BertRegressor(n_outputs=1)
-    
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)

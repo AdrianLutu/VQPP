@@ -1,0 +1,11 @@
+# Downloaded data (https://huggingface.co/datasets/funzon3/VQPP)
+resources/
+
+# Checkpoints and outputs written by the scripts
+baselines/finetune_bert/checkpoints/
+query_reformulation/outputs/
+
+# API keys of the LLM baseline
+baselines/llm/api_key.py
+
+__pycache__/

@@ -1,3 +1,4 @@
+import os
 import pickle
 
 # The CLIP classifier stores probabilities, so a candidate counts as predicted
@@ -14,25 +15,25 @@ FALLBACK_GROUP_SIZE = 25
 # meta_svr.py consumes all three splits, so all three are written here.
 SPLITS = {
     "train": {
-        "predictions": r".\clip_results\VAST\msrvtt_train_predictions.pickle",
-        "dataset": r".\clip_datasets\VAST\msrvtt_clip_train.pickle",
-        "r10": r".\clip_results\VAST\msrvtt_train_r10.pickle",
-        "rr": r".\clip_results\VAST\msrvtt_train_rr.pickle",
-        "query_indices": r".\clip_results\VAST\msrvtt_train_query_indices.pickle",
+        "predictions": os.path.join("clip_results", "VAST", "msrvtt_train_predictions.pickle"),
+        "dataset": os.path.join("clip_datasets", "VAST", "msrvtt_clip_train.pickle"),
+        "r10": os.path.join("clip_results", "VAST", "msrvtt_train_r10.pickle"),
+        "rr": os.path.join("clip_results", "VAST", "msrvtt_train_rr.pickle"),
+        "query_indices": os.path.join("clip_results", "VAST", "msrvtt_train_query_indices.pickle"),
     },
     "val": {
-        "predictions": r".\clip_results\VAST\msrvtt_val_predictions.pickle",
-        "dataset": r".\clip_datasets\VAST\msrvtt_clip_val.pickle",
-        "r10": r".\clip_results\VAST\msrvtt_val_r10.pickle",
-        "rr": r".\clip_results\VAST\msrvtt_val_rr.pickle",
-        "query_indices": r".\clip_results\VAST\msrvtt_val_query_indices.pickle",
+        "predictions": os.path.join("clip_results", "VAST", "msrvtt_val_predictions.pickle"),
+        "dataset": os.path.join("clip_datasets", "VAST", "msrvtt_clip_val.pickle"),
+        "r10": os.path.join("clip_results", "VAST", "msrvtt_val_r10.pickle"),
+        "rr": os.path.join("clip_results", "VAST", "msrvtt_val_rr.pickle"),
+        "query_indices": os.path.join("clip_results", "VAST", "msrvtt_val_query_indices.pickle"),
     },
     "test": {
-        "predictions": r".\clip_results\VAST\msrvtt_test_predictions.pickle",
-        "dataset": r".\clip_datasets\VAST\msrvtt_clip_test.pickle",
-        "r10": r".\clip_results\VAST\msrvtt_test_r10.pickle",
-        "rr": r".\clip_results\VAST\msrvtt_test_rr.pickle",
-        "query_indices": r".\clip_results\VAST\msrvtt_test_query_indices.pickle",
+        "predictions": os.path.join("clip_results", "VAST", "msrvtt_test_predictions.pickle"),
+        "dataset": os.path.join("clip_datasets", "VAST", "msrvtt_clip_test.pickle"),
+        "r10": os.path.join("clip_results", "VAST", "msrvtt_test_r10.pickle"),
+        "rr": os.path.join("clip_results", "VAST", "msrvtt_test_rr.pickle"),
+        "query_indices": os.path.join("clip_results", "VAST", "msrvtt_test_query_indices.pickle"),
     },
 }
 

@@ -8,9 +8,13 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import os
 
-TRAIN_PKL = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_train_rec.pickle"
-VAL_PKL = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_val_rec.pickle"
-TEST_PKL = "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_test_rec.pickle"
+# Must match TARGET_METRIC in create_dataset.py: the files of each metric carry its suffix.
+TARGET_METRIC = 'Recall@10'  # Options: 'Recall@10', 'Reciprocal_Rank'
+METRIC_SUFFIX = {'Recall@10': 'rec', 'Reciprocal_Rank': 'rr'}[TARGET_METRIC]
+
+TRAIN_PKL = f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_train_{METRIC_SUFFIX}.pickle"
+VAL_PKL = f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_val_{METRIC_SUFFIX}.pickle"
+TEST_PKL = f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/msrvtt_test_{METRIC_SUFFIX}.pickle"
 
 
 class CorrelationDataset(Dataset):
@@ -108,9 +112,9 @@ for lr in hyperparameters["learning_rate"]:
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
-                    torch.save(model.state_dict(), "/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/best_model_corr.pth")
+                    torch.save(model.state_dict(), f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/best_model_corr_{METRIC_SUFFIX}.pth")
 
-model.load_state_dict(torch.load("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/best_model_corr.pth"))
+model.load_state_dict(torch.load(f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/best_model_corr_{METRIC_SUFFIX}.pth"))
 model.eval()
 predictions = []
 with torch.no_grad():
@@ -120,5 +124,5 @@ with torch.no_grad():
         # tolist() returns a float and makes extend() raise a TypeError.
         predictions.extend(outputs.squeeze(-1).tolist())
 
-with open("/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/test_predictions.pickle", "wb") as f:
+with open(f"/home/eduard/Desktop/Research/Adrian/VQPP/VAST/corelation_cnn_datasets/test_predictions_{METRIC_SUFFIX}.pickle", "wb") as f:
     pickle.dump(predictions, f)

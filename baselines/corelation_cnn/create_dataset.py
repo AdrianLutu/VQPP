@@ -13,6 +13,13 @@ from transformers import CLIPVisionModelWithProjection
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize, InterpolationMode
 
 TARGET_METRIC = 'Recall@10'  # Options: 'Recall@10', 'Reciprocal_Rank'
+
+# The output files carry the metric in their name. process_and_save_sequentially resumes
+# from whatever file is already at the output path, so with a single name for both
+# metrics, switching TARGET_METRIC would report the split as "already completed" and keep
+# the labels of the other metric. 'rec' is the name the Recall@10 files already had.
+METRIC_SUFFIXES = {'Recall@10': 'rec', 'Reciprocal_Rank': 'rr'}
+METRIC_SUFFIX = METRIC_SUFFIXES[TARGET_METRIC]
 LIMIT_TRAIN = 20000 #VRAM limitation
 LIMIT_VAL = 5000
 LIMIT_TEST = 5000
@@ -26,17 +33,17 @@ PATHS = {
     "train": {
         "csv": os.path.join(DATA_ROOT, "metrics/msrvtt_train.csv"),
         "jsonl": os.path.join(DATA_ROOT, "top100/msrvtt_train.jsonl"),
-        "out": os.path.join(DATA_ROOT, "corelation_cnn_datasets/msrvtt_train_rec.pickle")
+        "out": os.path.join(DATA_ROOT, f"corelation_cnn_datasets/msrvtt_train_{METRIC_SUFFIX}.pickle")
     },
     "val": {
         "csv": os.path.join(DATA_ROOT, "metrics/msrvtt_val.csv"),
         "jsonl": os.path.join(DATA_ROOT, "top100/msrvtt_val.jsonl"),
-        "out": os.path.join(DATA_ROOT, "corelation_cnn_datasets/msrvtt_val_rec.pickle")
+        "out": os.path.join(DATA_ROOT, f"corelation_cnn_datasets/msrvtt_val_{METRIC_SUFFIX}.pickle")
     },
     "test": {
         "csv": os.path.join(DATA_ROOT, "metrics/msrvtt_test.csv"),
         "jsonl": os.path.join(DATA_ROOT, "top100/msrvtt_test.jsonl"),
-        "out": os.path.join(DATA_ROOT, "corelation_cnn_datasets/msrvtt_test_rec.pickle")
+        "out": os.path.join(DATA_ROOT, f"corelation_cnn_datasets/msrvtt_test_{METRIC_SUFFIX}.pickle")
     }
 }
 

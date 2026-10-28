@@ -2,8 +2,8 @@ import os
 import time
 import pandas as pd
 import numpy as np
-from google import genai
-from google.genai import types
+import torch
+from transformers import BertModel, BertTokenizer
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 import scipy.stats
@@ -21,73 +21,69 @@ def calculate_correlations(list1, list2):
 
     return pearson_corr, pvaluep, kendall_corr, pvalue
 
-EMBEDDING_MODEL = "text-embedding-004"
-BATCH_SIZE = 100
-RPM_LIMIT = 20
+RETRIEVAL_MODEL = "VAST"  # Options: "GRAM", "VAST"
+DATASET = "vatex"  # Options: "msrvtt", "vatex"
+METRIC = "Recall@10"  # Options: "Recall@10", "Reciprocal_Rank"
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+METRICS_DIR = os.path.join(REPO_ROOT, "resources", RETRIEVAL_MODEL, "metrics")
+
+# The in-context examples are the nearest training queries in the space of pre-trained
+# BERT embeddings, as described in the paper.
+EMBEDDING_MODEL = "bert-base-cased"
+BATCH_SIZE = 128
 TOPK= 16
 
+# How each metric is described to the LLM.
+METRIC_DESCRIPTIONS = {
+    "Recall@10": "the 'Recall@10' (1.0 if the correct video is ranked in the top 10, 0.0 otherwise)",
+    "Reciprocal_Rank": "the 'Reciprocal Rank' (1 / rank of the correct video, a float between 0.0 and 1.0)",
+}
+
 groq_client = Groq(api_key= API_KEY_GROQ)
-client = genai.Client(api_key=API_KEY)
 
-def get_embeddings_safe(text_list):
-    all_embeddings = []
-    total_items = len(text_list)
-    
-    sleep_interval = 60 / RPM_LIMIT + 1 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+bert_tokenizer = BertTokenizer.from_pretrained(EMBEDDING_MODEL)
+bert_model = BertModel.from_pretrained(EMBEDDING_MODEL).to(device)
+bert_model.eval()
 
-    for i in tqdm(range(0, total_items, BATCH_SIZE), desc="Embedding Batches"):
-        batch = text_list[i : i + BATCH_SIZE]
-        
-        success = False
-        retry_count = 0
-        while not success and retry_count < 5:
-            try:
-                response = client.models.embed_content(
-                    model=EMBEDDING_MODEL,
-                    contents=batch,
-                    config=types.EmbedContentConfig(
-                        task_type="RETRIEVAL_DOCUMENT"
-                    )
-                )
-                
-                batch_embs = [e.values for e in response.embeddings]
-                all_embeddings.extend(batch_embs)
-                success = True
+def get_embeddings(text_list):
+    """Mean-pooled last hidden states of pre-trained BERT, one row per text.
 
-            except Exception as e:
-                if "429" in str(e) or "Resource exhausted" in str(e):
-                    wait_time = (2 ** retry_count) * 10
-                    print(f"\nRate limit hit. Cooling down for {wait_time}s...")
-                    time.sleep(wait_time)
-                    retry_count += 1
-                else:
-                    print(f"\nCritical Error in batch starting at index {i}: {e}")
-                    all_embeddings.extend([[0.0] * 768] * len(batch))
-                    success = True
-
-        if not success:
-            # Without this the batch would contribute no embedding at all, and every
-            # later query would shift by one row. The neighbour indices are used as
-            # df_train.iloc[idx], so the prompt would then quote another query's recall.
-            print(f"\nBatch starting at index {i} failed after {retry_count} retries; "
-                  "using zero vectors to keep the embeddings aligned with the queries.")
-            all_embeddings.extend([[0.0] * 768] * len(batch))
-
-    return np.array(all_embeddings)
-
-def predict_rank_with_groq(val_query, similar_examples):
+    The padding tokens are left out of the mean through the attention mask. Mean pooling
+    is used rather than the [CLS] state because the [CLS] state of a BERT that was not
+    fine-tuned is a poor sentence representation for nearest-neighbour search.
     """
-    Predicts rank using Groq (Llama 3.3) for higher daily limits.
+    all_embeddings = []
+
+    for i in tqdm(range(0, len(text_list), BATCH_SIZE), desc="Embedding Batches"):
+        batch = text_list[i : i + BATCH_SIZE]
+        inputs = bert_tokenizer(
+            batch, padding=True, truncation=True, return_tensors="pt"
+        ).to(device)
+
+        with torch.no_grad():
+            hidden_states = bert_model(**inputs).last_hidden_state
+
+        mask = inputs["attention_mask"].unsqueeze(-1).float()
+        embeddings = (hidden_states * mask).sum(dim=1) / mask.sum(dim=1)
+        all_embeddings.append(embeddings.cpu().numpy())
+
+    return np.vstack(all_embeddings)
+
+def predict_score_with_groq(val_query, similar_examples):
+    """
+    Predicts METRIC using Groq (Llama 3.1 8B).
     """
     prompt = "You are a ranking prediction system.\n"
-    prompt += "Predict the 'Recall@10' (float 0.0 - 1.0) for the Target Query based on the provided Reference Examples.\n\n"
-    
+    prompt += f"Predict {METRIC_DESCRIPTIONS[METRIC]} for the Target Query based on the provided Reference Examples.\n\n"
+
     prompt += "Reference Examples:\n"
     for ex in similar_examples:
-        prompt += f"- Query: \"{ex['query']}\" | recall: {ex['recall']}\n"
-    
+        prompt += f"- Query: \"{ex['query']}\" | {METRIC}: {ex['score']}\n"
+
     prompt += f"\nTarget Query: \"{val_query}\"\n"
-    prompt += "Output strictly in JSON format: {\"predicted_recall\": <number>}"
+    prompt += "Output strictly in JSON format: {\"predicted_score\": <number>}"
 
     try:
         chat_completion = groq_client.chat.completions.create(
@@ -101,7 +97,7 @@ def predict_rank_with_groq(val_query, similar_examples):
             response_format={"type": "json_object"},
             temperature=0,
         )
-        
+
         response_content = chat_completion.choices[0].message.content
         print("Got Response")
         return response_content
@@ -111,8 +107,8 @@ def predict_rank_with_groq(val_query, similar_examples):
         return None
 
 def main():
-    df_train = pd.read_csv('VAST\\vatex_train.csv')
-    df_val = pd.read_csv('VAST\\vatex_test.csv')
+    df_train = pd.read_csv(os.path.join(METRICS_DIR, f"{DATASET}_train.csv"))
+    df_val = pd.read_csv(os.path.join(METRICS_DIR, f"{DATASET}_test.csv"))
 
     # Ground truth is collected next to the predictions, inside the loop. Taking the
     # whole column up front would leave the two lists shifted as soon as a query is
@@ -121,57 +117,49 @@ def main():
     scores = []
 
     train_queries = df_train['Query'].astype(str).tolist()
-    
-    train_embeddings = get_embeddings_safe(train_queries)
-    
+
+    train_embeddings = get_embeddings(train_queries)
+
     nn_model = NearestNeighbors(n_neighbors=TOPK, metric='cosine')
     nn_model.fit(train_embeddings)
 
-    
+    val_queries = df_val['Query'].astype(str).tolist()
+    val_embeddings = get_embeddings(val_queries)
+
     results = []
     for index, row in df_val.iterrows():
         val_query = str(row['Query'])
-        
-        try:
-            resp = client.models.embed_content(
-                model=EMBEDDING_MODEL,
-                contents=val_query,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
-            )
-            val_emb = np.array(resp.embeddings[0].values).reshape(1, -1)
-        except Exception as e:
-            print(f"Error embedding validation query: {e}")
-            continue
+        val_emb = val_embeddings[index].reshape(1, -1)
 
         distances, indices = nn_model.kneighbors(val_emb)
-        
+
         similar_examples = []
         for idx in indices[0]:
             similar_examples.append({
                 'query': df_train.iloc[idx]['Query'],
-                'recall': df_train.iloc[idx]['Recall@10']
+                'score': df_train.iloc[idx][METRIC]
             })
 
-        json_response = predict_rank_with_groq(val_query, similar_examples)
-        
-        final_rank = 0.0
+        json_response = predict_score_with_groq(val_query, similar_examples)
+
+        final_score = 0.0
         if json_response:
             try:
                 data = json.loads(json_response)
-                final_rank = float(data.get("predicted_recall", 0.0))
-                print(f"Query: {val_query} | Predicted: {final_rank}")
+                final_score = float(data.get("predicted_score", 0.0))
+                print(f"Query: {val_query} | Predicted: {final_score}")
             except (json.JSONDecodeError, ValueError) as e:
                 print(f"Query: {val_query} | Parse Error: {e}")
                 import re
                 match = re.search(r"0\.\d+", json_response)
                 if match:
-                    final_rank = float(match.group())
-                    print(f"  -> Recovered via Regex: {final_rank}")
+                    final_score = float(match.group())
+                    print(f"  -> Recovered via Regex: {final_score}")
         else:
             print(f"Query: {val_query} | Failed to get response")
-        
-        results.append(final_rank)
-        scores.append(row["Recall@10"])
+
+        results.append(final_score)
+        scores.append(row[METRIC])
 
         time.sleep(4)
 

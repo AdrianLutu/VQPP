@@ -4,10 +4,15 @@ from transformers import BertTokenizer, BertModel
 import pandas as pd
 import re
 import csv
+import os
 
-REWARD_MODEL_PATH = "/root/VQPP/baselines/finetune_bert/best_model.pth"
-CSV_INPUT_PATH = '/root/VQPP/rephrasing/phi-4-reformulator-final/test_rephrased_step_400.csv'
-CSV_OUTPUT_PATH = '/root/VQPP/rephrasing/benchmarked_queries_step400.csv'
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR = os.path.join(REPO_ROOT, "query_reformulation", "outputs")
+
+# The BERT predictor of GRAM Recall@10 on MSR-VTT, the same one finetune_phi4.py uses as reward.
+REWARD_MODEL_PATH = os.path.join(REPO_ROOT, "baselines", "finetune_bert", "checkpoints", "bert_GRAM_msrvtt_r10.pth")
+CSV_INPUT_PATH = os.path.join(OUTPUT_DIR, "phi-4-reformulator-final", "test_rephrased_step_400.csv")
+CSV_OUTPUT_PATH = os.path.join(OUTPUT_DIR, "benchmarked_queries_step400.csv")
 BATCH_SIZE = 16
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

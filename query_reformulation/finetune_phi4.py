@@ -16,14 +16,23 @@ from trl import OnlineDPOTrainer, OnlineDPOConfig
 from datasets import load_dataset
 from tqdm import tqdm
 
-TRAIN_FILE = "/root/VQPP/rephrasing/train_dpo.csv" 
-VAL_FILE   = "/root/VQPP/rephrasing/validation_dpo.csv"      
-TEST_FILE  = "/root/VQPP/resources/GRAM/metrics/msrvtt_test.csv"                
-REWARD_MODEL_PATH = "/root/VQPP/baselines/finetune_bert/best_model.pth"
-OUTPUT_DIR = "/root/VQPP/rephrasing/phi-4-reformulator-final"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+TRAIN_FILE = os.path.join(REPO_ROOT, "query_reformulation", "outputs", "train_dpo.csv")
+VAL_FILE   = os.path.join(REPO_ROOT, "query_reformulation", "outputs", "validation_dpo.csv")
+TEST_FILE  = os.path.join(REPO_ROOT, "resources", "GRAM", "metrics", "msrvtt_test.csv")
+# The reward is the BERT predictor of GRAM Recall@10 on MSR-VTT, written by
+# baselines/finetune_bert/finetune_bert.py run with RETRIEVAL_MODEL = "GRAM",
+# DATASET = "msrvtt" and METRIC = "Recall@10".
+REWARD_MODEL_PATH = os.path.join(REPO_ROOT, "baselines", "finetune_bert", "checkpoints", "bert_GRAM_msrvtt_r10.pth")
+OUTPUT_DIR = os.path.join(REPO_ROOT, "query_reformulation", "outputs", "phi-4-reformulator-final")
 
 MAX_SEQ_LENGTH = 1024
-LEARNING_RATE = 1e-6
+# The results reported in the paper (Table 5) were obtained with 1e-6. That is low for
+# LoRA: the adapters start at zero and with lora_alpha == r the update is not scaled up,
+# so one epoch at 1e-6 barely moves the policy. 5e-6 is the rate of the DPO + LoRA
+# recipes of the HuggingFace alignment handbook. Set it back to 1e-6 to reproduce Table 5.
+LEARNING_RATE = 5e-6
 BATCH_SIZE = 4
 GRAD_ACCUMULATION = 8
 BETA = 0.3                    
@@ -68,18 +77,31 @@ SYSTEM_MESSAGE = "Reformulate the user query to maximize retrieval. Output ONLY 
 # Training prompts carry this example, so generation has to use it too: a prompt built
 # without it is a format the policy was never trained on.
 ONE_SHOT_EXAMPLE = (
-    "<|user|>\nfunny cat videos<|end|>\n"
-    "<|assistant|>\ncompilation of funny cats playing<|end|>\n"
+    "<|user|>funny cat videos<|end|>"
+    "<|assistant|>compilation of funny cats playing<|end|>"
 )
 
 
+# OnlineDPOTrainer puts the tokenizer's BOS token (<|endoftext|> for Phi-4-mini) in front
+# of every training prompt, while the generation callbacks tokenize with the tokenizer
+# alone, which adds no BOS for this model. The prompt carries it explicitly so that both
+# see the same tokens; the trainer does not add it a second time when it is already there.
+BOS_TOKEN = "<|endoftext|>"
+
+
 def build_prompt(query):
-    """The single prompt format, used for training, validation and test generation."""
+    """The single prompt format, used for training, validation and test generation.
+
+    It follows the chat template of Phi-4-mini-instruct, which writes every turn as
+    <|role|>content<|end|> with no newline between the tags and the content, and opens
+    the answer with <|assistant|>. The newlines of the Phi-3 template are not part of it.
+    """
     return (
-        f"<|system|>\n{SYSTEM_MESSAGE}<|end|>\n"
+        f"{BOS_TOKEN}"
+        f"<|system|>{SYSTEM_MESSAGE}<|end|>"
         f"{ONE_SHOT_EXAMPLE}"
-        f"<|user|>\n{query}<|end|>\n"
-        f"<|assistant|>\n"
+        f"<|user|>{query}<|end|>"
+        f"<|assistant|>"
     )
 
 
@@ -234,6 +256,12 @@ def train():
     )
     policy_model = get_peft_model(policy_model, peft_config)
     policy_model.print_trainable_parameters()
+
+    if not os.path.exists(REWARD_MODEL_PATH):
+        raise FileNotFoundError(
+            f"No reward model at {REWARD_MODEL_PATH}. Run baselines/finetune_bert/finetune_bert.py "
+            'with RETRIEVAL_MODEL = "GRAM", DATASET = "msrvtt" and METRIC = "Recall@10" first.'
+        )
 
     reward_tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
     reward_model = BertRegressor()
