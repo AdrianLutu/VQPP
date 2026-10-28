@@ -18,9 +18,13 @@ TRAIN_JSONL_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/top100/v
 VAL_JSONL_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/top100/vatex_val.jsonl"
 TEST_JSONL_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/top100/vatex_test.jsonl"
 
-TRAIN_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_train.pickle"
-VAL_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_val.pickle"
-TEST_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_test.pickle"
+TRAIN_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_clip4clip_train.pickle"
+VAL_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_clip4clip_val.pickle"
+TEST_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_clip4clip_test.pickle"
+# The frame embeddings of every video, shared by the three splits: video_id -> array of
+# shape (NUM_FRAMES_TO_SAMPLE, 512). Storing them once per video instead of once per
+# (query, candidate) pair keeps the datasets small.
+FRAMES_OUTPUT_PATH = "/home/eduard/Desktop/Research/Adrian/VQPP/GRAM/GRAM/clip_datasets/vatex_clip4clip_frames.pickle"
 
 MODEL_NAME = "Searchium-ai/clip4clip-webvid150k"
 NUM_FRAMES_TO_SAMPLE = 12
@@ -29,7 +33,8 @@ MAX_VIDEOS_PER_QUERY = 25
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")
 
-video_embedding_cache = {}
+# video_id -> frame embeddings of the video, shape (NUM_FRAMES_TO_SAMPLE, 512).
+frame_embedding_cache = {}
 
 VIDEO_PREPROCESSOR = Compose([
     Resize(224, interpolation=InterpolationMode.BICUBIC),
@@ -65,6 +70,12 @@ def load_video_frames(video_path, num_frames_to_sample, training=True):
     for idx in indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
+        if not ret:
+            # As in create_dataset_clip.py: fall back to the first frame rather than a
+            # blank one, which the temporal transformer would read as a real frame.
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ret, frame = cap.read()
+
         if ret:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(frame_rgb)
@@ -78,6 +89,11 @@ def load_video_frames(video_path, num_frames_to_sample, training=True):
 
 def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Processing"):
     """Builds (features, label, query_index, query_text) samples.
+
+    features is a (text_embedding, video_id) pair. The frame embeddings of the video are
+    kept in frame_embedding_cache, saved to FRAMES_OUTPUT_PATH: finetune_clip4clip.py
+    aggregates them with the temporal transformer of CLIP4Clip, which is trained with the
+    classifier, so they cannot be averaged into one video embedding here.
 
     query_index is the 0-based line number of the query in the jsonl file, which is
     assumed to follow the same order as the rows of the matching metrics CSV. It is
@@ -121,11 +137,7 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
             text_emb = text_emb_tensor.detach().cpu().numpy()
 
             for video_id in retrieved_ids[:MAX_VIDEOS_PER_QUERY]:
-                video_emb = None
-
-                if video_id in video_embedding_cache:
-                    video_emb = video_embedding_cache[video_id]
-                else:
+                if video_id not in frame_embedding_cache:
                     video_path = os.path.join(VIDEO_FOLDER, f"{video_id}{VIDEO_EXTENSION}")
                     frame_tensor = load_video_frames(video_path, NUM_FRAMES_TO_SAMPLE)
 
@@ -141,20 +153,17 @@ def process_lines(lines, text_model, tokenizer, vision_model, pbar_desc="Process
                         skipped_videos += 1
                         continue
 
-                    visual_output = vision_model(frame_tensor)["image_embeds"]
-                    visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True)
-                    visual_output = torch.mean(visual_output, dim=0)
-                    visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True)
-
-                    video_emb = visual_output.unsqueeze(0).detach().cpu().numpy()
-                    video_embedding_cache[video_id] = video_emb
+                    # The projected frame embeddings, left unnormalised: in CLIP4Clip the
+                    # temporal transformer reads them as they come out of the projection,
+                    # and the normalisation follows the aggregation.
+                    frame_embeddings = vision_model(frame_tensor)["image_embeds"]
+                    frame_embedding_cache[video_id] = frame_embeddings.detach().cpu().numpy().astype(np.float32)
 
                 score = 1 if video_id == gt_id else 0
-                combined_features = np.hstack((text_emb, video_emb))
                 # Store the query this candidate belongs to, so the evaluation can group
                 # predictions per query instead of assuming fixed-size chunks, and can
                 # check the query against the CSV row it is compared with.
-                dataset_pairs.append((combined_features, score, query_index, query_text))
+                dataset_pairs.append(((text_emb, video_id), score, query_index, query_text))
 
     if skipped_videos:
         print(f"[{pbar_desc}] Skipped {skipped_videos} candidate videos that could not be loaded.")
@@ -188,5 +197,9 @@ if __name__ == "__main__":
     run_extraction(VAL_JSONL_PATH, VAL_OUTPUT_PATH, text_model, tokenizer, vision_model, "Validation")
 
     run_extraction(TEST_JSONL_PATH, TEST_OUTPUT_PATH, text_model, tokenizer, vision_model, "Test")
+
+    with open(FRAMES_OUTPUT_PATH, "wb") as f_out:
+        pickle.dump(frame_embedding_cache, f_out)
+    print(f"Saved the frame embeddings of {len(frame_embedding_cache)} videos to {FRAMES_OUTPUT_PATH}")
 
     print("\nAll datasets have been processed and saved.")

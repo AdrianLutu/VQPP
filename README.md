@@ -83,6 +83,12 @@ Finetuned CLIP: Uses visual-semantic similarity of retrieved candidates.
    poetry run python baselines/finetune_clip/finetune_clip.py
    poetry run python baselines/finetune_clip/compute_correlations.py
 ```
+Finetuned CLIP4Clip: Same classifier, but the frames of each video are aggregated by the temporal transformer of CLIP4Clip, trained together with the classifier. Point the paths of `compute_correlations.py` to the CLIP4Clip test dataset and predictions.
+```bash
+   poetry run python baselines/finetune_clip/create_dataset_clip4clip.py
+   poetry run python baselines/finetune_clip/finetune_clip4clip.py
+   poetry run python baselines/finetune_clip/compute_correlations.py
+```
 Correlation CNN: Analyzes the correlation between the embeddings of the top 25 videos retrieved for each query. `TARGET_METRIC` has to be set to the same value in the three scripts: every file they write carries the metric in its name.
 ```bash
    poetry run python baselines/corelation_cnn/create_dataset.py
@@ -124,7 +130,7 @@ Differences between the paper (arXiv:2602.17814) and the code, and inconsistenci
 - **"Last convolutional block" in the paper.** The paper attaches the regression head "to the [CLS] token returned by the last convolutional block". BERT has no convolutional blocks; this should read "the last transformer block" (encoder layer), and, as above, the code actually uses the pooler output.
 - **Early stopping.** The paper states that all models are trained with early stopping. The fine-tuned BERT now stops when the validation MSE has not improved for 3 epochs and keeps the best epoch; earlier versions of the script always trained for 12 epochs and kept the last one. The CLIP classifier and the Correlation CNN train for 25 epochs and keep the epoch with the lowest validation loss.
 - **Correlation CNN dense layers.** The paper describes "two dense layers of 512 neurons each" after global average pooling. The code has one dense layer of 512 neurons (`fc1`, 512 → 512) followed by the 512 → 1 regression output.
-- **CLIP4Clip temporal transformer.** The paper aggregates the frames with "the temporal transformer in CLIP4Clip". The code uses the HuggingFace port `Searchium-ai/clip4clip-webvid150k`, which ships only the CLIP text and vision encoders: the video embedding is the mean of the 12 frame embeddings (the *meanP* variant of CLIP4Clip), and no temporal transformer is involved.
+- **CLIP4Clip temporal transformer.** The paper aggregates the frames with "the temporal transformer in CLIP4Clip". Earlier versions of the code used the mean of the 12 frame embeddings instead (the *meanP* variant of CLIP4Clip): the HuggingFace port `Searchium-ai/clip4clip-webvid150k` ships only the CLIP text and vision encoders, without the weights of a temporal transformer. `finetune_clip4clip.py` now implements the *seqTransf* header of CLIP4Clip: frame position embeddings and 4 transformer layers, initialised from the CLIP text encoder as in CLIP4Clip, a residual connection to the frame embeddings, then mean pooling. It is trained together with the classifier. The CLIP4Clip numbers of the ablation in the paper were obtained with the mean pooling, so they will differ from the numbers this version produces.
 - **LLM in-context examples.** The paper selects the 16 examples with a k-NN over pre-trained BERT embeddings, which is what the script does now. Earlier versions of the script used Google's `text-embedding-004` instead, and supported only Recall@10; Reciprocal Rank is now supported as well.
 - **Split sizes.** The released data (`resources/{GRAM,VAST}/metrics`) does not match Table 1 of the paper:
 
